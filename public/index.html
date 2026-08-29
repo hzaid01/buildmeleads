@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Lead Scout - Business Lead Generator</title>
+  <meta name="description" content="Local business lead generator with self-hosted gosom scraper, Apify fallback, WhatsApp number verification, and filtered CSV export.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon>
+            <line x1="9" y1="3" x2="9" y2="18"></line>
+            <line x1="15" y1="6" x2="15" y2="21"></line>
+          </svg>
+        </div>
+        <div>
+          <h1>Local Business Lead Generator</h1>
+          <p class="subtitle">Google Maps Scraper (gosom + Apify Fallback) & WhatsApp Verifier</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="systemStatus" class="system-status">
+          <span class="status-dot"></span>
+          <span class="status-text">Checking environment...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION A: Search Form -->
+    <section class="card form-card" id="searchSection">
+      <div class="card-header">
+        <h2>Target Search Parameters</h2>
+        <span class="badge-hint">Supports multiple niches separated by commas</span>
+      </div>
+
+      <form id="scrapeForm" class="scrape-form">
+        <div class="form-grid">
+          <div class="form-group span-2">
+            <label for="nichesInput">Business Niche(s) <span class="req">*</span></label>
+            <input 
+              type="text" 
+              id="nichesInput" 
+              name="niches" 
+              placeholder="e.g. plumbers, roofers, dentists, electricians" 
+              required
+              value="plumbers, roofers"
+            >
+            <span class="form-hint">Separate multiple categories with commas</span>
+          </div>
+
+          <div class="form-group span-2">
+            <label for="cityInput">City + State / Country <span class="req">*</span></label>
+            <input 
+              type="text" 
+              id="cityInput" 
+              name="city" 
+              placeholder="e.g. Tampa, FL, USA or London, UK" 
+              required
+              value="Tampa, FL, USA"
+            >
+            <span class="form-hint">Target geographic market or municipality</span>
+          </div>
+
+          <div class="form-group span-1">
+            <label for="maxResultsInput">Results per Niche</label>
+            <input 
+              type="number" 
+              id="maxResultsInput" 
+              name="maxResults" 
+              min="5" 
+              max="200" 
+              value="50" 
+              required
+            >
+            <span class="form-hint">Default: 50 results</span>
+          </div>
+
+          <div class="form-group span-1 form-actions">
+            <button type="submit" id="startBtn" class="btn btn-primary btn-block">
+              <span class="btn-icon">⚡</span>
+              <span class="btn-text">Start Scrape</span>
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <!-- Real-time Status Indicator -->
+      <div id="scrapeStatusBox" class="status-box hidden">
+        <div class="status-main">
+          <div class="spinner" id="statusSpinner"></div>
+          <div class="status-content">
+            <div class="status-title" id="statusTitle">Scraping via gosom (self-hosted)...</div>
+            <div class="status-subtitle" id="statusSubtitle">Connecting to scraping worker and preparing query payloads</div>
+          </div>
+          <div class="source-tag" id="engineSourceTag">Self-Hosted gosom</div>
+        </div>
+
+        <!-- Live Log Drawer -->
+        <div class="log-container">
+          <div class="log-header">
+            <span>Live Activity Stream</span>
+            <button type="button" id="toggleLogsBtn" class="btn-text-sm">Hide Logs</button>
+          </div>
+          <div class="log-terminal" id="logTerminal">
+            <div class="log-line log-system">[Ready] Awaiting search task...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Source Notification Banner (Appears after scrape) -->
+    <div id="sourceBanner" class="source-banner hidden">
+      <div class="banner-icon" id="sourceBannerIcon">ℹ️</div>
+      <div class="banner-text">
+        <strong id="sourceBannerTitle">Extraction Engine: Self-Hosted gosom</strong>
+        <span id="sourceBannerDetail">Data was gathered using your local Docker scraper without consuming external API credits.</span>
+      </div>
+    </div>
+
+    <!-- SECTION B, C & D: Results Table & Actions -->
+    <section class="card results-card hidden" id="resultsSection">
+      <!-- Top Action & Stats Bar -->
+      <div class="results-header">
+        <div class="tab-group" role="tablist">
+          <button type="button" class="tab-btn active" id="tabFiltered" data-tab="prospects">
+            <span class="tab-title">Qualified Weak-GBP Leads</span>
+            <span class="tab-count" id="countProspects">0</span>
+          </button>
+          <button type="button" class="tab-btn" id="tabAll" data-tab="all">
+            <span class="tab-title">All Scraped Results</span>
+            <span class="tab-count" id="countAll">0</span>
+          </button>
+        </div>
+
+        <div class="actions-group">
+          <!-- WhatsApp Action Button -->
+          <button type="button" id="verifyWhatsAppBtn" class="btn btn-whatsapp" disabled>
+            <span class="wa-icon">💬</span>
+            <span id="verifyWhatsAppText">Verify Selected on WhatsApp</span>
+            <span class="badge-count" id="selectedCountBadge">0</span>
+          </button>
+
+          <!-- Export CSV Button -->
+          <button type="button" id="downloadCsvBtn" class="btn btn-export">
+            <span class="btn-icon">📥</span>
+            <span>Download CSV (Filtered)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter Explanation Callout -->
+      <div class="filter-callout" id="filterNotice">
+        <div class="filter-icon">🎯</div>
+        <div class="filter-text">
+          <strong>Automatic Lead Qualification Active:</strong> Showing open businesses with <strong>no website</strong> or at least one weak profile signal: <strong>stale reviews, missing photos/category, rating below 4.0, or fewer than 10 reviews</strong>.
+        </div>
+      </div>
+
+      <!-- Quick Search & Select Bar -->
+      <div class="table-toolbar">
+        <div class="selection-tools">
+          <label class="checkbox-container">
+            <input type="checkbox" id="selectAllCheckbox">
+            <span class="checkmark"></span>
+            <span class="label-text">Select All Visible</span>
+          </label>
+          <span class="selection-summary" id="selectionSummary">0 selected</span>
+        </div>
+
+        <div class="search-box">
+          <input type="text" id="tableFilterInput" placeholder="Filter by name, phone, niche, email...">
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="table-responsive">
+        <table class="data-table" id="leadsTable">
+          <thead>
+            <tr>
+              <th width="44" class="text-center">#</th>
+              <th width="40" class="text-center">Select</th>
+              <th data-sort="rank" class="sortable">Rank ↕</th>
+              <th data-sort="name" class="sortable">Business Name ↕</th>
+              <th data-sort="niche" class="sortable">Niche ↕</th>
+              <th data-sort="rating" class="sortable">Rating & Reviews ↕</th>
+              <th data-sort="phone" class="sortable">Phone Number ↕</th>
+              <th class="text-center">WhatsApp</th>
+              <th data-sort="email" class="sortable">Email ↕</th>
+              <th>Website</th>
+              <th>Address</th>
+            </tr>
+          </thead>
+          <tbody id="leadsTableBody">
+            <!-- Rows dynamically injected by app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div class="footer-stats" id="tableFooterStats">Showing 0 of 0 leads</div>
+        <div class="footer-tip">💡 Tip: Verify WhatsApp numbers before downloading your targeted prospect outreach CSV.</div>
+      </div>
+    </section>
+
+    <!-- Persisted lead engine dashboard -->
+    <section class="card pipeline-card" id="pipelineSection" aria-labelledby="pipelineTitle">
+      <div class="pipeline-header">
+        <div>
+          <div class="eyebrow">Persistent lead engine</div>
+          <h2 id="pipelineTitle">Lead & Outreach Pipeline</h2>
+          <p class="pipeline-subtitle">SQLite-backed state survives restarts and prevents duplicate outreach.</p>
+        </div>
+        <div class="pipeline-actions">
+          <span id="outreachModeBadge" class="mode-badge dry-run">Dry-run locked</span>
+          <button type="button" id="refreshPipelineBtn" class="btn btn-secondary">Refresh</button>
+          <button type="button" id="enrichLeadsBtn" class="btn btn-secondary">Enrich Emails</button>
+          <button type="button" id="buildPreviewBtn" class="btn btn-primary">Build Dry-Run Preview</button>
+        </div>
+      </div>
+
+      <div id="pipelineStatus" class="pipeline-status" role="status" aria-live="polite">
+        Connecting to the Python lead engine…
+      </div>
+
+      <div class="metrics-grid" aria-label="Lead pipeline summary">
+        <div class="metric"><span>Total leads</span><strong id="metricTotal">0</strong></div>
+        <div class="metric"><span>Qualified</span><strong id="metricQualified">0</strong></div>
+        <div class="metric"><span>Validated email</span><strong id="metricSendable">0</strong></div>
+        <div class="metric"><span>Email sent</span><strong id="metricSent">0</strong></div>
+        <div class="metric"><span>Opened</span><strong id="metricOpened">0</strong></div>
+        <div class="metric"><span>Reply rate</span><strong id="metricReplyRate">0%</strong></div>
+      </div>
+
+      <div class="pipeline-table-wrap">
+        <table class="data-table pipeline-table" id="pipelineTable">
+          <thead>
+            <tr>
+              <th>Business</th>
+              <th>City</th>
+              <th>Issue Detected</th>
+              <th>Email</th>
+              <th>Consent</th>
+              <th>Email Sent</th>
+              <th>Opened</th>
+              <th>Replied</th>
+            </tr>
+          </thead>
+          <tbody id="pipelineTableBody">
+            <tr><td colspan="8" class="empty-cell">Waiting for the lead engine…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="pipelineFooterStats">0 persisted leads</span>
+        <span>Live sending requires real sender details and documented affirmative consent.</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- WhatsApp Confirmation Modal (Requirement 7) -->
+  <div id="whatsappModal" class="modal-backdrop hidden">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-icon-badge">💬</div>
+        <div>
+          <h3>Confirm WhatsApp Verification</h3>
+          <p class="modal-sub">Apify Number Checker Service</p>
+        </div>
+        <button type="button" class="modal-close" id="closeModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="cost-card">
+          <div class="cost-row">
+            <span>Selected Businesses to Verify:</span>
+            <strong id="modalCheckCount">0 numbers</strong>
+          </div>
+          <div class="cost-row">
+            <span>Estimated Apify Credit Cost:</span>
+            <strong class="cost-highlight" id="modalCostEstimate">~$0.00</strong>
+          </div>
+        </div>
+
+        <div id="largeBatchAlert" class="alert-box alert-warning hidden">
+          <strong>⚠️ Large Batch Notice:</strong> You are checking more than 50 numbers (<span id="batchCountSpan">0</span>). This will consume active Apify credits. Please confirm you wish to proceed.
+        </div>
+
+        <p class="modal-desc">
+          This checks live WhatsApp registration using the Apify <code>maged120/whatsapp-number-checker</code> actor. No QR code or WhatsApp login is required.
+        </p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" id="cancelModalBtn" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="confirmVerifyBtn" class="btn btn-whatsapp">Confirm & Verify</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="previewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewModalTitle">
+    <div class="modal-dialog preview-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 id="previewModalTitle">Dry-Run Outreach Preview</h3>
+          <p class="modal-sub">No email has been sent and the live daily cap was not consumed.</p>
+        </div>
+        <button type="button" class="modal-close" id="closePreviewModalBtn" aria-label="Close preview">&times;</button>
+      </div>
+      <div class="modal-body preview-body" id="previewBody"></div>
+      <div class="modal-footer">
+        <button type="button" id="closePreviewBtn" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

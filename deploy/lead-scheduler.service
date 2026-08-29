@@ -1,0 +1,14 @@
+[Unit]
+Description=Local Lead Scout persistent outreach scheduler tick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=leadscout
+Group=leadscout
+WorkingDirectory=/opt/local-lead-scout
+EnvironmentFile=/opt/local-lead-scout/.env
+ExecStart=/opt/local-lead-scout/.venv/bin/python -m lead_engine.cli tick
+NoNewPrivileges=true
+PrivateTmp=true

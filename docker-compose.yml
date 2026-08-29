@@ -1,0 +1,16 @@
+services:
+  gosom-scraper:
+    image: gosom/google-maps-scraper:latest
+    container_name: gosom-google-maps-scraper
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/gmapsdata:/gmapsdata
+      - ./data/queries:/queries
+      - ./data/out:/out
+    command: ["-data-folder", "/gmapsdata"]
+
+networks:
+  default:
+    name: leadgen-network

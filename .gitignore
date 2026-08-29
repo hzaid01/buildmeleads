@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.venv/
+env/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment variables & local configuration
+.env
+.env.local
+.env.*.local
+
+# Databases, runtime data, and scraped outputs
+data/*.pid
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/leads.db
+data/leads.db-shm
+data/leads.db-wal
+data/gmapsdata/
+data/out/
+data/temp/
+
+# Build artifacts
+scripts/bin/
+
+# Logs & temp files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS specific files
+.DS_Store
+Thumbs.db

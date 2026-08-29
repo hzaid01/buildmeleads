@@ -1,0 +1,19 @@
+[Unit]
+Description=Local Lead Scout Python Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=leadscout
+Group=leadscout
+WorkingDirectory=/opt/local-lead-scout
+EnvironmentFile=/opt/local-lead-scout/.env
+ExecStart=/opt/local-lead-scout/.venv/bin/python -m uvicorn lead_engine.app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

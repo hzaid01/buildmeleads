@@ -1,0 +1,19 @@
+[Unit]
+Description=Local Lead Scout Node Dashboard
+After=network-online.target lead-engine.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=leadscout
+Group=leadscout
+WorkingDirectory=/opt/local-lead-scout
+EnvironmentFile=/opt/local-lead-scout/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
