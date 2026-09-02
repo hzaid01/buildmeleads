@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Local Lead Scout - Business Lead Generator</title>
-  <meta name="description" content="Local business lead generator with self-hosted gosom scraper, Apify fallback, WhatsApp number verification, and filtered CSV export.">
+  <title>Lead Scout · Business Discovery & Outreach</title>
+  <meta name="description" content="Authenticated local business discovery, qualification, and outreach workspace.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -20,11 +20,12 @@
           </svg>
         </div>
         <div>
-          <h1>Local Business Lead Generator</h1>
-          <p class="subtitle">Google Maps Scraper (gosom + Apify Fallback) & WhatsApp Verifier</p>
+          <h1>Lead Scout</h1>
+          <p class="subtitle">Business discovery, qualification, and outreach workspace</p>
         </div>
       </div>
       <div class="header-right">
+        <div class="account-menu"><span id="currentUserEmail"></span><button type="button" id="logoutBtn" class="btn btn-secondary">Log out</button></div>
         <div id="systemStatus" class="system-status">
           <span class="status-dot"></span>
           <span class="status-text">Checking environment...</span>
@@ -95,10 +96,10 @@
         <div class="status-main">
           <div class="spinner" id="statusSpinner"></div>
           <div class="status-content">
-            <div class="status-title" id="statusTitle">Scraping via gosom (self-hosted)...</div>
+            <div class="status-title" id="statusTitle">Discovering local businesses…</div>
             <div class="status-subtitle" id="statusSubtitle">Connecting to scraping worker and preparing query payloads</div>
           </div>
-          <div class="source-tag" id="engineSourceTag">Self-Hosted gosom</div>
+          <div class="source-tag" id="engineSourceTag">Discovery active</div>
         </div>
 
         <!-- Live Log Drawer -->
@@ -118,8 +119,8 @@
     <div id="sourceBanner" class="source-banner hidden">
       <div class="banner-icon" id="sourceBannerIcon">ℹ️</div>
       <div class="banner-text">
-        <strong id="sourceBannerTitle">Extraction Engine: Self-Hosted gosom</strong>
-        <span id="sourceBannerDetail">Data was gathered using your local Docker scraper without consuming external API credits.</span>
+        <strong id="sourceBannerTitle">Discovery completed</strong>
+        <span id="sourceBannerDetail">Results are ready for qualification and enrichment.</span>
       </div>
     </div>
 
@@ -212,20 +213,86 @@
     <section class="card pipeline-card" id="pipelineSection" aria-labelledby="pipelineTitle">
       <div class="pipeline-header">
         <div>
-          <div class="eyebrow">Persistent lead engine</div>
           <h2 id="pipelineTitle">Lead & Outreach Pipeline</h2>
-          <p class="pipeline-subtitle">SQLite-backed state survives restarts and prevents duplicate outreach.</p>
+          <p class="pipeline-subtitle">Your leads, campaigns, Gmail connection, and send history are isolated to your account.</p>
         </div>
         <div class="pipeline-actions">
-          <span id="outreachModeBadge" class="mode-badge dry-run">Dry-run locked</span>
           <button type="button" id="refreshPipelineBtn" class="btn btn-secondary">Refresh</button>
           <button type="button" id="enrichLeadsBtn" class="btn btn-secondary">Enrich Emails</button>
-          <button type="button" id="buildPreviewBtn" class="btn btn-primary">Build Dry-Run Preview</button>
+          <button type="button" id="generateEmailsBtn" class="btn btn-primary">Generate Emails</button>
         </div>
       </div>
 
       <div id="pipelineStatus" class="pipeline-status" role="status" aria-live="polite">
         Connecting to the Python lead engine…
+      </div>
+
+      <div class="outreach-config" aria-labelledby="outreachConfigTitle">
+        <div class="outreach-config-head">
+          <div>
+            <h3 id="outreachConfigTitle">Campaign & sending</h3>
+            <p>Groq uses these saved details to generate each reviewable email before it enters the queue.</p>
+          </div>
+          <button type="button" id="saveCampaignBtn" class="btn btn-secondary">Save campaign</button>
+        </div>
+
+        <div class="gmail-testing-notice" role="note">
+          <strong>Gmail connection is in Google Testing mode.</strong>
+          <span>Only approved test users can connect; this app blocks new connections at <span id="gmailCapacity">0 / 100</span> accounts until verification is complete. Google may require test users to reconnect after seven days.</span>
+        </div>
+
+        <div class="campaign-settings-grid">
+          <div class="form-group">
+            <label for="campaignNameInput">Campaign name</label>
+            <input id="campaignNameInput" maxlength="120" required>
+          </div>
+          <div class="form-group">
+            <label for="workflowModeSelect">Workflow</label>
+            <select id="workflowModeSelect"><option value="manual">Manual approval</option><option value="automatic">Automatic enqueue</option></select>
+            <label class="automatic-confirm"><input type="checkbox" id="automaticEnabledInput"> I understand automatic mode queues validated drafts without a second click.</label>
+          </div>
+          <div class="form-group campaign-copy-field">
+            <label for="campaignOfferInput">Offer</label>
+            <textarea id="campaignOfferInput" maxlength="500" rows="2" placeholder="e.g. a free Google Business Profile audit"></textarea>
+          </div>
+          <div class="form-group campaign-copy-field">
+            <label for="campaignCtaInput">Call to action</label>
+            <textarea id="campaignCtaInput" maxlength="500" rows="2" placeholder="e.g. ask if they are the right person to share it with"></textarea>
+          </div>
+          <div class="form-group sending-method-field">
+            <label for="sendingMethodSelect">Sending method</label>
+            <select id="sendingMethodSelect">
+              <option value="sendgrid">SendGrid</option>
+              <option value="gmail">Connected Gmail</option>
+            </select>
+            <span class="form-hint">Saved to this account. The background worker performs delivery.</span>
+          </div>
+          <div class="form-group">
+            <label for="groqModelSelect">Groq model</label>
+            <select id="groqModelSelect"><option value="openai/gpt-oss-120b">Quality · GPT-OSS 120B</option><option value="openai/gpt-oss-20b">Speed · GPT-OSS 20B</option></select>
+          </div>
+          <div class="form-group span-full">
+            <label for="promptTemplateInput">Generation prompt</label>
+            <textarea id="promptTemplateInput" maxlength="6000" rows="7"></textarea>
+            <span class="form-hint">Available fields: {{business_name}}, {{city}}, {{weaknesses}}, {{offer}}, {{cta}}</span>
+          </div>
+          <div class="validation-settings span-full" aria-label="Pre-send safeguards">
+            <label>Daily cap<input type="number" id="dailyCapInput" min="1" max="10000"></label>
+            <label>Hourly cap<input type="number" id="hourlyCapInput" min="1" max="1000"></label>
+            <label>Duplicate lookback (days)<input type="number" id="lookbackInput" min="1" max="3650"></label>
+            <label>Bounce pause (%)<input type="number" id="bounceThresholdInput" min="0" max="100" step="0.1"></label>
+            <label>Complaint pause (%)<input type="number" id="complaintThresholdInput" min="0" max="100" step="0.1"></label>
+            <label>Trailing sends<input type="number" id="circuitWindowInput" min="10" max="10000"></label>
+          </div>
+          <div class="gmail-connect-field">
+            <div class="gmail-connection-copy">
+              <strong id="gmailConnectionLabel">Checking Gmail connector…</strong>
+              <span id="gmailConnectionDetail">Connect with the minimum gmail.send permission.</span>
+            </div>
+            <button type="button" id="connectGmailBtn" class="btn btn-primary">Connect Gmail</button>
+            <button type="button" id="disconnectGmailBtn" class="btn btn-secondary hidden">Disconnect</button>
+          </div>
+        </div>
       </div>
 
       <div class="metrics-grid" aria-label="Lead pipeline summary">
@@ -303,18 +370,19 @@
     </div>
   </div>
 
-  <div id="previewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="previewModalTitle">
-    <div class="modal-dialog preview-dialog">
+  <div id="draftModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="draftModalTitle">
+    <div class="modal-dialog draft-dialog">
       <div class="modal-header">
         <div>
-          <h3 id="previewModalTitle">Dry-Run Outreach Preview</h3>
-          <p class="modal-sub">No email has been sent and the live daily cap was not consumed.</p>
+          <h3 id="draftModalTitle">Generated email batch</h3>
+          <p class="modal-sub" id="draftModalSubtitle">Review the stored drafts before approving this batch.</p>
         </div>
-        <button type="button" class="modal-close" id="closePreviewModalBtn" aria-label="Close preview">&times;</button>
+        <button type="button" class="modal-close" id="closeDraftModalBtn" aria-label="Close generated batch">&times;</button>
       </div>
-      <div class="modal-body preview-body" id="previewBody"></div>
+      <div class="modal-body draft-body" id="draftBody"></div>
       <div class="modal-footer">
-        <button type="button" id="closePreviewBtn" class="btn btn-secondary">Close</button>
+        <button type="button" id="closeDraftBtn" class="btn btn-secondary">Close</button>
+        <button type="button" id="approveBatchBtn" class="btn btn-primary">Approve &amp; Send</button>
       </div>
     </div>
   </div>

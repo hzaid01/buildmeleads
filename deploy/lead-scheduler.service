@@ -9,6 +9,6 @@ User=leadscout
 Group=leadscout
 WorkingDirectory=/opt/local-lead-scout
 EnvironmentFile=/opt/local-lead-scout/.env
-ExecStart=/opt/local-lead-scout/.venv/bin/python -m lead_engine.cli tick
+ExecStart=/opt/local-lead-scout/.venv/bin/python -m lead_engine.cli dispatch
 NoNewPrivileges=true
 PrivateTmp=true

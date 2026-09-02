@@ -197,18 +197,18 @@ def enrich_lead(lead: dict[str, Any]) -> EnrichmentResult:
     return result
 
 
-def enrich_batch(limit: int = 25) -> dict[str, Any]:
+def enrich_batch(user_id: str, limit: int = 25) -> dict[str, Any]:
     init_db()
     with connect() as connection:
         rows = connection.execute(
             """
             SELECT l.id,l.name,l.website,l.email,l.email_source
-            FROM leads l LEFT JOIN suppressions s ON lower(s.email)=lower(l.email)
-            WHERE l.qualified=1 AND l.is_closed=0 AND s.email IS NULL
+            FROM leads l LEFT JOIN suppressions s ON s.user_id=l.user_id AND lower(s.email)=lower(l.email)
+            WHERE l.user_id=? AND l.qualified=1 AND l.is_closed=0 AND s.email IS NULL
               AND (l.email_valid=0 OR l.mx_valid=0)
             ORDER BY l.email<>'' DESC,l.review_count DESC LIMIT ?
             """,
-            (max(1, min(limit, 100)),),
+            (user_id, max(1, min(limit, 100))),
         ).fetchall()
     results: list[EnrichmentResult] = []
     for row in rows:
@@ -218,7 +218,7 @@ def enrich_batch(limit: int = 25) -> dict[str, Any]:
         with transaction(immediate=True) as connection:
             connection.execute(
                 """
-                UPDATE leads SET email=?,email_source=?,email_valid=?,mx_valid=?,updated_at=? WHERE id=?
+                UPDATE leads SET email=?,email_source=?,email_valid=?,mx_valid=?,updated_at=? WHERE id=? AND user_id=?
                 """,
                 (
                     result.email,
@@ -227,6 +227,7 @@ def enrich_batch(limit: int = 25) -> dict[str, Any]:
                     1 if result.mx_valid else 0,
                     now,
                     result.lead_id,
+                    user_id,
                 ),
             )
     return {

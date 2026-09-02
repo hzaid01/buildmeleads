@@ -16,10 +16,9 @@ if (-not (Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
 & '.venv\Scripts\python.exe' -m pip install -r requirements.txt
 npm install
 & '.venv\Scripts\python.exe' -m lead_engine.cli init
-& '.venv\Scripts\python.exe' -m lead_engine.cli import
 
 if ($InstallPlaywrightBrowser) {
     & '.venv\Scripts\python.exe' -m playwright install chromium
 }
 
-Write-Host 'Setup complete. Outreach is still dry-run locked.' -ForegroundColor Green
+Write-Host 'Setup complete. Register the first admin account to claim legacy leads.' -ForegroundColor Green

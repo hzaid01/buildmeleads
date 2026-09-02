@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">BuildMeLeads</title>
+  <desc id="desc">A route card enclosing a rising local-business signal and a forward arrow.</desc>
+  <path fill="#17211d" d="M5 7.5A2.5 2.5 0 0 1 7.5 5h24L43 16.5v24A2.5 2.5 0 0 1 40.5 43h-33A2.5 2.5 0 0 1 5 40.5v-33Z"/>
+  <path fill="#eef1eb" d="M10 10h18v10H10zm0 15h10v13H10zm15 0h13v4H25z"/>
+  <path fill="#f4c95d" d="M25 33h8.2l-2.6-2.6 2.8-2.8 7.4 7.4-7.4 7.4-2.8-2.8 2.6-2.6H25z"/>
+  <path fill="#28604d" d="M33 10v7h7z"/>
+</svg>

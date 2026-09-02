@@ -7,67 +7,63 @@ from fastapi.testclient import TestClient
 
 from lead_engine.app import app
 from lead_engine.config import settings
-from lead_engine.database import init_db
+from lead_engine.database import connect, init_db
 
 
 class LeadEngineApiTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = Path(tempfile.mkdtemp(prefix="lead-engine-api-tests-"))
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="lead-saas-api-"))
         object.__setattr__(settings, "database_path", self.temp_dir / "api.db")
-        object.__setattr__(settings, "engine_token", "test-engine-token")
+        object.__setattr__(settings, "engine_token", "engine-test")
         object.__setattr__(settings, "manage_pid_file", False)
-        object.__setattr__(settings, "dry_run", True)
-        object.__setattr__(settings, "live_sending_enabled", False)
+        object.__setattr__(settings, "gmail_testing_mode", True)
+        object.__setattr__(settings, "gmail_test_user_limit", 100)
         init_db()
-        self.client_context = TestClient(app)
-        self.client = self.client_context.__enter__()
-        self.headers = {"X-Lead-Engine-Token": "test-engine-token"}
+        self.context = TestClient(app); self.client = self.context.__enter__()
+        self.engine = {"X-Lead-Engine-Token": "engine-test"}
 
     def tearDown(self):
-        self.client_context.__exit__(None, None, None)
+        self.context.__exit__(None, None, None)
         object.__setattr__(settings, "manage_pid_file", True)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_health_and_authentication(self):
-        health = self.client.get("/health")
-        self.assertEqual(health.status_code, 200)
-        self.assertTrue(health.json()["dryRun"])
-        unauthorized = self.client.get("/api/leads")
-        self.assertEqual(unauthorized.status_code, 401)
+    def register(self, email: str) -> dict[str, str]:
+        response = self.client.post("/api/auth/register", headers=self.engine, json={"email":email,"password":"correct-horse-battery","display_name":"Test"})
+        self.assertEqual(response.status_code, 200)
+        token = response.json()["sessionToken"]
+        with connect() as connection:
+            stored = connection.execute("SELECT token_hash FROM sessions ORDER BY id DESC LIMIT 1").fetchone()[0]
+        self.assertNotEqual(stored, token)
+        return {**self.engine, "X-Lead-Session-Token": token}
 
-    def test_ingest_list_analytics_and_reply(self):
-        payload = {
-            "source": "test",
-            "query": "plumbers in Tampa",
-            "leads": [{
-                "placeId": "api-place-1",
-                "name": "API Plumbing",
-                "niche": "Plumber",
-                "category": "Plumber",
-                "city": "Tampa, Florida, US",
-                "timezone": "America/New_York",
-                "website": "",
-                "rating": 4.6,
-                "reviewCount": 30,
-                "photoCount": 2,
-            }],
-        }
-        ingested = self.client.post("/api/leads/ingest", headers=self.headers, json=payload)
-        self.assertEqual(ingested.status_code, 200)
-        self.assertEqual(ingested.json()["inserted"], 1)
-        listed = self.client.get("/api/leads", headers=self.headers).json()
-        self.assertEqual(listed["total"], 1)
-        self.assertIn("no website", listed["leads"][0]["issue_detected"].lower())
-        lead_id = listed["leads"][0]["id"]
-        reply = self.client.post(f"/api/leads/{lead_id}/reply", headers=self.headers, json={})
-        self.assertEqual(reply.status_code, 200)
-        contacted = self.client.post(f"/api/leads/{lead_id}/contacted", headers=self.headers, json={})
-        self.assertEqual(contacted.status_code, 200)
-        analytics = self.client.get("/api/analytics", headers=self.headers).json()
-        self.assertEqual(analytics["qualified"], 1)
-        self.assertEqual(analytics["replied"], 1)
-        self.assertEqual(analytics["sent"], 1)
+    def test_session_authentication_and_logout(self):
+        self.assertEqual(self.client.get("/api/leads", headers=self.engine).status_code, 401)
+        headers = self.register("admin@example.com")
+        self.assertEqual(self.client.get("/api/auth/me", headers=headers).status_code, 200)
+        self.assertEqual(self.client.post("/api/auth/logout", headers=headers).status_code, 200)
+        self.assertEqual(self.client.get("/api/leads", headers=headers).status_code, 401)
+
+    def test_cross_tenant_lead_access_is_blocked(self):
+        admin = self.register("admin@example.com")
+        member = self.register("member@example.com")
+        payload={"source":"test","leads":[{"placeId":"private","name":"Private Lead","website":"","email":"owner@example.org","rating":3.5,"reviewCount":2,"photoCount":0,"category":"Plumber"}]}
+        self.assertEqual(self.client.post("/api/leads/ingest",headers=admin,json=payload).status_code,200)
+        admin_rows=self.client.get("/api/leads",headers=admin).json(); member_rows=self.client.get("/api/leads",headers=member).json()
+        self.assertEqual(admin_rows["total"],1); self.assertEqual(member_rows["total"],0)
+        lead_id=admin_rows["leads"][0]["id"]
+        self.assertEqual(self.client.post(f"/api/leads/{lead_id}/reply",headers=member,json={}).status_code,404)
+
+    def test_campaign_defaults_and_gmail_minimum_scope(self):
+        headers=self.register("admin@example.com")
+        campaign=self.client.get("/api/settings/campaign",headers=headers)
+        self.assertEqual(campaign.status_code,200); self.assertEqual(campaign.json()["workflow_mode"],"manual")
+        self.assertEqual(campaign.json()["groq_model"],"openai/gpt-oss-120b")
+        gmail=self.client.get("/api/gmail/status",headers=headers).json()
+        self.assertEqual(gmail["scope"],"https://www.googleapis.com/auth/gmail.send")
+        self.assertEqual(gmail["maxConnectedUsers"],100)
+        self.assertIn("setupRequired",gmail)
+        self.assertEqual(gmail["redirectUri"],settings.google_oauth_redirect_uri)
+        self.assertNotIn(settings.google_oauth_client_secret,gmail.values())
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()

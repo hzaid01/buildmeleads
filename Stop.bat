@@ -12,6 +12,7 @@ echo.
 echo [1/3] Stopping application-owned processes...
 call :STOP_PID_FILE "data\node.pid" "Node dashboard" "node"
 call :STOP_PID_FILE "data\lead_engine.pid" "Python lead engine" "python"
+call :STOP_PID_FILE "data\outreach_worker.pid" "Outreach worker" "python"
 
 echo.
 echo [2/3] Stopping gosom Docker service when available...

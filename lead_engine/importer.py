@@ -63,21 +63,21 @@ def csv_row_to_lead(row: dict[str, str], rank: int, filename: str) -> dict[str, 
     }
 
 
-def import_csv_file(path: Path) -> dict[str, int]:
+def import_csv_file(user_id: str, path: Path) -> dict[str, int]:
     leads: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         for rank, row in enumerate(reader, start=1):
             leads.append(csv_row_to_lead(row, rank, path.name))
-    result = upsert_leads(leads, source="gosom-csv-import", query=path.name)
+    result = upsert_leads(user_id, leads, source="gosom-csv-import", query=path.name)
     result["files"] = 1
     return result
 
 
-def import_csv_directory(directory: Path) -> dict[str, int]:
+def import_csv_directory(user_id: str, directory: Path) -> dict[str, int]:
     totals = {"files": 0, "received": 0, "inserted": 0, "updated": 0}
     for path in sorted(directory.glob("*.csv")):
-        result = import_csv_file(path)
+        result = import_csv_file(user_id, path)
         for key in totals:
             totals[key] += result.get(key, 0)
     return totals

@@ -13,7 +13,7 @@ Before live deployment:
 
 1. Replace every campaign identity placeholder in `.env`.
 2. Configure a verified SendGrid domain, webhook signature key, HTTPS `PUBLIC_BASE_URL`, SPF, DKIM, and DMARC.
-3. Keep `OUTREACH_DRY_RUN=true` and `LIVE_SENDING_ENABLED=false` until sample review is complete.
+3. Register the first admin, configure a campaign, and use manual approval until automatic enqueue is intentionally enabled.
 4. Put the dashboard behind HTTPS and authentication; do not expose FastAPI port 8000 publicly.
 5. Install Chromium only if `ENABLE_PLAYWRIGHT_ENRICHMENT=true` using `.venv/bin/python -m playwright install --with-deps chromium`.
 6. Copy the units to `/etc/systemd/system`, run `systemctl daemon-reload`, and enable only after paths/users are verified.

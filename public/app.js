@@ -17,7 +17,10 @@ const state = {
   systemStatus: null,
   persistedLeads: [],
   pipelineAnalytics: null,
-  pipelineBusy: false
+  campaignSettings: null,
+  gmailStatus: null,
+  pipelineBusy: false,
+  currentBatchId: null
 };
 
 // DOM Elements
@@ -72,10 +75,31 @@ const elements = {
   toastContainer: document.getElementById('toastContainer'),
 
   pipelineStatus: document.getElementById('pipelineStatus'),
-  outreachModeBadge: document.getElementById('outreachModeBadge'),
   refreshPipelineBtn: document.getElementById('refreshPipelineBtn'),
   enrichLeadsBtn: document.getElementById('enrichLeadsBtn'),
-  buildPreviewBtn: document.getElementById('buildPreviewBtn'),
+  generateEmailsBtn: document.getElementById('generateEmailsBtn'),
+  saveCampaignBtn: document.getElementById('saveCampaignBtn'),
+  campaignOfferInput: document.getElementById('campaignOfferInput'),
+  campaignCtaInput: document.getElementById('campaignCtaInput'),
+  sendingMethodSelect: document.getElementById('sendingMethodSelect'),
+  campaignNameInput: document.getElementById('campaignNameInput'),
+  workflowModeSelect: document.getElementById('workflowModeSelect'),
+  automaticEnabledInput: document.getElementById('automaticEnabledInput'),
+  groqModelSelect: document.getElementById('groqModelSelect'),
+  promptTemplateInput: document.getElementById('promptTemplateInput'),
+  dailyCapInput: document.getElementById('dailyCapInput'),
+  hourlyCapInput: document.getElementById('hourlyCapInput'),
+  lookbackInput: document.getElementById('lookbackInput'),
+  bounceThresholdInput: document.getElementById('bounceThresholdInput'),
+  complaintThresholdInput: document.getElementById('complaintThresholdInput'),
+  circuitWindowInput: document.getElementById('circuitWindowInput'),
+  gmailCapacity: document.getElementById('gmailCapacity'),
+  gmailSetupPanel: document.getElementById('gmailSetupPanel'),
+  gmailRedirectUri: document.getElementById('gmailRedirectUri'),
+  gmailConnectionLabel: document.getElementById('gmailConnectionLabel'),
+  gmailConnectionDetail: document.getElementById('gmailConnectionDetail'),
+  connectGmailBtn: document.getElementById('connectGmailBtn'),
+  disconnectGmailBtn: document.getElementById('disconnectGmailBtn'),
   pipelineTableBody: document.getElementById('pipelineTableBody'),
   pipelineFooterStats: document.getElementById('pipelineFooterStats'),
   metricTotal: document.getElementById('metricTotal'),
@@ -84,19 +108,28 @@ const elements = {
   metricSent: document.getElementById('metricSent'),
   metricOpened: document.getElementById('metricOpened'),
   metricReplyRate: document.getElementById('metricReplyRate'),
-  previewModal: document.getElementById('previewModal'),
-  previewBody: document.getElementById('previewBody'),
-  closePreviewModalBtn: document.getElementById('closePreviewModalBtn'),
-  closePreviewBtn: document.getElementById('closePreviewBtn')
+  draftModal: document.getElementById('draftModal'),
+  draftBody: document.getElementById('draftBody'),
+  draftModalSubtitle: document.getElementById('draftModalSubtitle'),
+  closeDraftModalBtn: document.getElementById('closeDraftModalBtn'),
+  closeDraftBtn: document.getElementById('closeDraftBtn'),
+  approveBatchBtn: document.getElementById('approveBatchBtn'),
+  currentUserEmail: document.getElementById('currentUserEmail'),
+  logoutBtn: document.getElementById('logoutBtn')
 };
 
 // ==========================================
 // Initialization & Environment Check
 // ==========================================
 async function initApp() {
+  const identity = await fetch('/api/auth/me');
+  if (identity.status === 401) return window.location.assign('/login');
+  const identityData = await identity.json();
+  elements.currentUserEmail.textContent = identityData.user?.email || '';
   setupEventListeners();
   await checkSystemStatus();
   await loadPipeline();
+  handleOAuthReturn();
 }
 
 async function checkSystemStatus() {
@@ -108,18 +141,15 @@ async function checkSystemStatus() {
     const dot = elements.systemStatus.querySelector('.status-dot');
     const text = elements.systemStatus.querySelector('.status-text');
 
-    if (data.dockerRunning || data.gosomApiReachable) {
+    if (data.dockerRunning || data.gosomApiReachable || data.apifyConfigured) {
       dot.className = 'status-dot online';
-      text.textContent = 'Docker Engine Online (Free gosom)';
-    } else if (data.apifyConfigured) {
-      dot.className = 'status-dot warning';
-      text.textContent = 'Docker Offline • Apify Ready (Fallback)';
+      text.textContent = 'Discovery: Ready';
     } else {
       dot.className = 'status-dot offline';
-      text.textContent = 'Docker & Apify Token Missing in .env';
+      text.textContent = 'Discovery: Setup required';
     }
     if (data.leadEngine?.available === false) {
-      elements.pipelineStatus.textContent = 'Python lead engine is offline. Start it to enable persistence and outreach previews.';
+      elements.pipelineStatus.textContent = 'Python lead engine is offline. Start it to enable account data and outreach workflows.';
       elements.pipelineStatus.className = 'pipeline-status error';
     }
   } catch (err) {
@@ -173,11 +203,16 @@ function setupEventListeners() {
   // Persistent lead pipeline
   elements.refreshPipelineBtn.addEventListener('click', loadPipeline);
   elements.enrichLeadsBtn.addEventListener('click', handleEnrichLeads);
-  elements.buildPreviewBtn.addEventListener('click', handleBuildPreview);
-  elements.closePreviewModalBtn.addEventListener('click', closePreviewModal);
-  elements.closePreviewBtn.addEventListener('click', closePreviewModal);
-  elements.previewModal.addEventListener('click', event => {
-    if (event.target === elements.previewModal) closePreviewModal();
+  elements.generateEmailsBtn.addEventListener('click', handleGenerateEmails);
+  elements.saveCampaignBtn.addEventListener('click', handleSaveCampaign);
+  elements.connectGmailBtn.addEventListener('click', handleConnectGmail);
+  elements.disconnectGmailBtn.addEventListener('click', handleDisconnectGmail);
+  elements.closeDraftModalBtn.addEventListener('click', closeDraftModal);
+  elements.closeDraftBtn.addEventListener('click', closeDraftModal);
+  elements.approveBatchBtn.addEventListener('click', handleApproveBatch);
+  elements.logoutBtn.addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); window.location.assign('/login'); });
+  elements.draftModal.addEventListener('click', event => {
+    if (event.target === elements.draftModal) closeDraftModal();
   });
 }
 
@@ -276,14 +311,15 @@ function connectSSE(jobId) {
   evtSource.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
-      appendLog(data.message, data.type);
+      const safeMessage = String(data.message || '')
+        .replace(/self-hosted\s*\(gosom\)|gosom/gi, 'discovery service')
+        .replace(/docker/gi, 'local discovery runtime')
+        .replace(/apify google maps scraper|apify actor/gi, 'cloud discovery service');
+      appendLog(safeMessage, data.type);
 
-      // Detect fallback from log messages
-      if (data.message && data.message.includes('Activating automatic fallback to Apify')) {
-        elements.statusTitle.textContent = 'Falling back to Apify Google Maps Scraper...';
-        elements.statusSubtitle.textContent = 'Self-hosted scraper unavailable. Using Apify cloud actor.';
-        elements.engineSourceTag.textContent = 'Apify Actor Fallback';
-        elements.engineSourceTag.className = 'source-tag fallback';
+      if (data.message && data.message.includes('Activating automatic fallback')) {
+        elements.statusTitle.textContent = 'Continuing discovery…';
+        elements.statusSubtitle.textContent = 'The discovery service is recovering this search automatically.';
       }
     } catch (e) {
       appendLog(event.data);
@@ -302,10 +338,10 @@ function updateScrapeUI(isRunning) {
   if (isRunning) {
     elements.scrapeStatusBox.classList.remove('hidden');
     elements.statusSpinner.classList.remove('hidden');
-    elements.statusTitle.textContent = 'Scraping via gosom (self-hosted)...';
+    elements.statusTitle.textContent = 'Discovering local businesses…';
     elements.statusSubtitle.textContent = 'Running queries and extracting contact details...';
-    elements.engineSourceTag.textContent = 'Self-Hosted gosom';
-    elements.engineSourceTag.className = 'source-tag gosom';
+    elements.engineSourceTag.textContent = 'Discovery active';
+    elements.engineSourceTag.className = 'source-tag';
     elements.sourceBanner.classList.add('hidden');
   } else {
     elements.statusSpinner.classList.add('hidden');
@@ -316,22 +352,10 @@ function updateScrapeUI(isRunning) {
 
 function renderSourceBanner(source, isFallback, fallbackReason) {
   elements.sourceBanner.classList.remove('hidden');
-  if (isFallback) {
-    elements.sourceBanner.className = 'source-banner fallback';
-    elements.sourceBannerIcon.textContent = '⚡';
-    const isMixed = String(source || '').startsWith('mixed');
-    elements.sourceBannerTitle.textContent = isMixed
-      ? 'Extraction Method: gosom with Partial Apify Recovery'
-      : 'Extraction Method: Apify Google Maps Scraper (Fallback Active)';
-    elements.sourceBannerDetail.textContent = isMixed
-      ? `Local results were preserved; Apify recovered only failed niches (${fallbackReason || 'partial failure'}).`
-      : `Free self-hosted gosom scraper was bypassed (${fallbackReason || 'unavailable'}). Scraping completed using Apify Actor credits.`;
-  } else {
-    elements.sourceBanner.className = 'source-banner gosom';
-    elements.sourceBannerIcon.textContent = '🎉';
-    elements.sourceBannerTitle.textContent = 'Extraction Method: Self-Hosted gosom (Free Local Docker)';
-    elements.sourceBannerDetail.textContent = 'All leads extracted locally without spending external Apify credits!';
-  }
+  elements.sourceBanner.className = 'source-banner gosom';
+  elements.sourceBannerIcon.textContent = '✓';
+  elements.sourceBannerTitle.textContent = 'Discovery completed';
+  elements.sourceBannerDetail.textContent = 'Results are ready for qualification, enrichment, and account-scoped storage.';
 }
 
 function appendLog(msg, type = 'info') {
@@ -636,17 +660,23 @@ async function loadPipeline() {
   state.pipelineBusy = true;
   setPipelineBusy(true, 'Loading persisted leads…');
   try {
-    const [leadsResponse, analyticsResponse] = await Promise.all([
+    const [leadsResponse, analyticsResponse, settingsResponse] = await Promise.all([
       fetch('/api/pipeline/leads?limit=500&qualified_only=false'),
-      fetch('/api/pipeline/analytics')
+      fetch('/api/pipeline/analytics'),
+      fetch('/api/pipeline/settings')
     ]);
     const leadsData = await leadsResponse.json();
     const analyticsData = await analyticsResponse.json();
+    const settingsData = await settingsResponse.json();
     if (!leadsResponse.ok || !leadsData.success) throw new Error(leadsData.error || 'Lead engine unavailable');
     if (!analyticsResponse.ok || !analyticsData.success) throw new Error(analyticsData.error || 'Analytics unavailable');
+    if (!settingsResponse.ok || !settingsData.success) throw new Error(settingsData.error || 'Campaign settings unavailable');
     state.persistedLeads = leadsData.leads || [];
     state.pipelineAnalytics = analyticsData;
+    state.campaignSettings = settingsData.campaign || null;
+    state.gmailStatus = settingsData.gmail || null;
     renderPipeline();
+    renderOutreachSettings();
     elements.pipelineStatus.textContent = `${state.persistedLeads.length} leads loaded from SQLite. Duplicate outreach protection is active.`;
     elements.pipelineStatus.className = 'pipeline-status success';
   } catch (error) {
@@ -662,7 +692,12 @@ async function loadPipeline() {
 function setPipelineBusy(busy, message = '') {
   elements.refreshPipelineBtn.disabled = busy;
   elements.enrichLeadsBtn.disabled = busy;
-  elements.buildPreviewBtn.disabled = busy;
+  elements.generateEmailsBtn.disabled = busy;
+  elements.saveCampaignBtn.disabled = busy;
+  const gmail = state.gmailStatus || {};
+  const gmailLimit = gmail.maxConnectedUsers || 100;
+  elements.connectGmailBtn.disabled = busy || !gmail.configured || (!gmail.connected && (gmail.connectedCount || 0) >= gmailLimit);
+  elements.disconnectGmailBtn.disabled = busy || !gmail.connected;
   if (message) elements.pipelineStatus.textContent = message;
 }
 
@@ -674,8 +709,6 @@ function renderPipeline() {
   elements.metricSent.textContent = stats.sent || 0;
   elements.metricOpened.textContent = stats.opened || 0;
   elements.metricReplyRate.textContent = `${stats.replyRate || 0}%`;
-  elements.outreachModeBadge.textContent = stats.dryRun ? 'Dry-run locked' : 'Live sending';
-  elements.outreachModeBadge.className = `mode-badge ${stats.dryRun ? 'dry-run' : 'live'}`;
   elements.pipelineFooterStats.textContent = `${stats.total || 0} persisted · ${stats.qualified || 0} qualified · ${stats.replied || 0} replied`;
 
   if (state.persistedLeads.length === 0) {
@@ -713,6 +746,137 @@ function renderPipeline() {
   });
 }
 
+function renderOutreachSettings() {
+  const campaign = state.campaignSettings || {};
+  const gmail = state.gmailStatus || {};
+  elements.campaignOfferInput.value = campaign.offer || '';
+  elements.campaignCtaInput.value = campaign.cta || '';
+  elements.sendingMethodSelect.value = campaign.sending_method || 'sendgrid';
+  elements.campaignNameInput.value = campaign.name || '';
+  elements.workflowModeSelect.value = campaign.workflow_mode || 'manual';
+  elements.automaticEnabledInput.checked = Boolean(campaign.automatic_enabled);
+  elements.groqModelSelect.value = campaign.groq_model || 'openai/gpt-oss-120b';
+  elements.promptTemplateInput.value = campaign.prompt_template || '';
+  elements.dailyCapInput.value = campaign.daily_cap || 10;
+  elements.hourlyCapInput.value = campaign.hourly_cap || 3;
+  elements.lookbackInput.value = campaign.duplicate_lookback_days || 90;
+  elements.bounceThresholdInput.value = campaign.bounce_threshold_pct ?? 5;
+  elements.complaintThresholdInput.value = campaign.complaint_threshold_pct ?? 0.3;
+  elements.circuitWindowInput.value = campaign.circuit_breaker_window || 100;
+  const limit = gmail.maxConnectedUsers || 100;
+  if (elements.gmailCapacity) elements.gmailCapacity.textContent = `${gmail.connectedCount || 0} / ${limit}`;
+  const setupRequired = gmail.setupRequired ?? !gmail.configured;
+  if (elements.gmailSetupPanel) elements.gmailSetupPanel.classList.toggle('hidden', !setupRequired);
+  if (elements.gmailRedirectUri) elements.gmailRedirectUri.textContent = gmail.redirectUri || `${window.location.origin}/api/gmail/oauth/callback`;
+  elements.gmailConnectionLabel.textContent = gmail.connected
+    ? 'Gmail connected'
+    : setupRequired
+      ? 'Gmail connector awaiting setup'
+      : 'Gmail ready to connect';
+  if (gmail.connected) {
+    const connectedAt = gmail.connectedAt ? new Date(gmail.connectedAt).toLocaleString() : 'recently';
+    elements.gmailConnectionDetail.textContent = `Connected ${connectedAt} with gmail.send only. Access tokens refresh automatically.`;
+  } else if (setupRequired) {
+    elements.gmailConnectionDetail.textContent = 'Google OAuth credentials are required in .env before connecting.';
+  } else {
+    elements.gmailConnectionDetail.textContent = 'Authorize an approved Google test account with the minimum gmail.send permission.';
+  }
+  elements.connectGmailBtn.textContent = gmail.connected ? 'Reconnect Gmail' : 'Connect Gmail';
+  elements.disconnectGmailBtn.classList.toggle('hidden', !gmail.connected);
+  elements.connectGmailBtn.disabled = state.pipelineBusy || !gmail.configured || (!gmail.connected && (gmail.connectedCount || 0) >= limit);
+}
+
+async function handleSaveCampaign() {
+  if (state.pipelineBusy) return;
+  const offer = elements.campaignOfferInput.value.trim();
+  const cta = elements.campaignCtaInput.value.trim();
+  if (!offer || !cta) {
+    showToast('Add both a campaign offer and call to action before saving.', 'error');
+    return;
+  }
+  state.pipelineBusy = true;
+  setPipelineBusy(true, 'Saving campaign settings…');
+  try {
+    const response = await fetch('/api/pipeline/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: elements.campaignNameInput.value.trim(),
+        sending_method: elements.sendingMethodSelect.value,
+        workflow_mode: elements.workflowModeSelect.value,
+        automatic_enabled: elements.automaticEnabledInput.checked,
+        offer,
+        cta,
+        prompt_template: elements.promptTemplateInput.value.trim(),
+        groq_model: elements.groqModelSelect.value,
+        daily_cap: Number(elements.dailyCapInput.value),
+        hourly_cap: Number(elements.hourlyCapInput.value),
+        duplicate_lookback_days: Number(elements.lookbackInput.value),
+        bounce_threshold_pct: Number(elements.bounceThresholdInput.value),
+        complaint_threshold_pct: Number(elements.complaintThresholdInput.value),
+        circuit_breaker_window: Number(elements.circuitWindowInput.value)
+      })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || data.detail || 'Campaign settings were not saved');
+    showToast('Campaign settings saved for this user.', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    state.pipelineBusy = false;
+    setPipelineBusy(false);
+    await loadPipeline();
+  }
+}
+
+async function handleConnectGmail() {
+  if (state.pipelineBusy) return;
+  state.pipelineBusy = true;
+  setPipelineBusy(true, 'Preparing Google authorization…');
+  try {
+    const response = await fetch('/api/pipeline/gmail/connect', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success || !data.authorizationUrl) throw new Error(data.error || data.detail || 'Unable to start Gmail authorization');
+    window.location.assign(data.authorizationUrl);
+  } catch (error) {
+    state.pipelineBusy = false;
+    setPipelineBusy(false);
+    renderOutreachSettings();
+    showToast(error.message, 'error');
+  }
+}
+
+async function handleDisconnectGmail() {
+  if (state.pipelineBusy || !window.confirm('Disconnect Gmail and switch this user back to SendGrid?')) return;
+  state.pipelineBusy = true;
+  setPipelineBusy(true, 'Disconnecting Gmail…');
+  try {
+    const response = await fetch('/api/pipeline/gmail/disconnect', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || data.detail || 'Gmail could not be disconnected');
+    showToast('Gmail disconnected. SendGrid is selected again.', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    state.pipelineBusy = false;
+    setPipelineBusy(false);
+    await loadPipeline();
+  }
+}
+
+function handleOAuthReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get('gmail');
+  if (!result) return;
+  if (result === 'connected') showToast('Gmail connected successfully with gmail.send access.', 'success');
+  else showToast(`Gmail connection failed: ${params.get('message') || 'authorization was not completed'}`, 'error');
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
+
 function renderPipelineEmpty(message) {
   elements.pipelineTableBody.innerHTML = `<tr><td colspan="8" class="empty-cell">${escapeHtml(message)}</td></tr>`;
 }
@@ -746,18 +910,19 @@ async function handleEnrichLeads() {
   }
 }
 
-async function handleBuildPreview() {
+async function handleGenerateEmails() {
   if (state.pipelineBusy) return;
   state.pipelineBusy = true;
-  setPipelineBusy(true, 'Building the capped dry-run schedule…');
+  setPipelineBusy(true, 'Generating personalized emails with Groq…');
   try {
-    const response = await fetch('/api/pipeline/outreach/plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const response = await fetch('/api/pipeline/outreach/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 25 }) });
     const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data.error || (data.errors || []).join('; ') || 'Preview failed');
-    renderPreview(data);
-    elements.previewModal.classList.remove('hidden');
+    if (!response.ok || !data.success) throw new Error(data.error || (data.errors || []).join('; ') || 'Email generation failed');
+    state.currentBatchId = data.batchId;
+    renderDraftBatch(data);
+    elements.draftModal.classList.remove('hidden');
   } catch (error) {
-    showToast(`Preview error: ${error.message}`, 'error');
+    showToast(`Generation error: ${error.message}`, 'error');
   } finally {
     state.pipelineBusy = false;
     setPipelineBusy(false);
@@ -765,23 +930,40 @@ async function handleBuildPreview() {
   }
 }
 
-function renderPreview(data) {
+function renderDraftBatch(data) {
   const items = data.items || [];
-  const summary = `<div class="preview-summary"><strong>${data.planned || 0} preview emails</strong><span>Warmup day ${data.warmup?.day || 1} · hard cap ${data.warmup?.cap || 10}/day</span></div>`;
+  const automatic = data.workflowMode === 'automatic';
+  elements.draftModalSubtitle.textContent = automatic ? 'This automatic campaign validated and queued the generated emails.' : 'These drafts are stored. Approve this batch when the copy is ready.';
+  elements.approveBatchBtn.classList.toggle('hidden', automatic);
+  const summary = `<div class="draft-summary"><strong>${data.generated || 0} Groq-generated emails</strong><span>${escapeHtml(data.workflowMode || 'manual')} workflow · ${data.failed || 0} failed</span></div>`;
   const cards = items.length ? items.map(item => `
-    <article class="preview-email">
-      <div class="preview-email-head"><strong>${escapeHtml(item.business)}</strong><span>${new Date(item.scheduledFor).toLocaleString()}</span></div>
+    <article class="draft-email">
+      <div class="draft-email-head"><strong>${escapeHtml(item.business)}</strong><span>${new Date(item.scheduledFor).toLocaleString()}</span></div>
       <div><span class="micro-status">To</span> ${escapeHtml(item.email)}</div>
       <div><span class="micro-status">Subject</span> ${escapeHtml(item.subject)}</div>
+      <div><span class="micro-status">State</span> ${escapeHtml(item.status)}</div>
       <pre>${escapeHtml(item.body)}</pre>
-      <div class="consent-warning">${item.consentStatus === 'confirmed' ? 'Documented consent confirmed' : 'Preview only — live sending blocked until consent is confirmed'}</div>
     </article>
-  `).join('') : '<p>No leads currently have both a format-valid email and a valid MX record. Run enrichment first.</p>';
-  elements.previewBody.innerHTML = summary + cards;
+  `).join('') : '<p>No eligible leads were generated. Confirm consent and run email enrichment first.</p>';
+  elements.draftBody.innerHTML = summary + cards;
 }
 
-function closePreviewModal() {
-  elements.previewModal.classList.add('hidden');
+async function handleApproveBatch() {
+  if (!state.currentBatchId || state.pipelineBusy) return;
+  state.pipelineBusy = true;
+  elements.approveBatchBtn.disabled = true;
+  try {
+    const response = await fetch(`/api/pipeline/outreach/batches/${encodeURIComponent(state.currentBatchId)}/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Batch approval failed');
+    showToast(`${data.queued} emails queued; ${data.blocked} blocked by validation.`, 'success');
+    closeDraftModal();
+  } catch (error) { showToast(error.message, 'error'); }
+  finally { state.pipelineBusy = false; elements.approveBatchBtn.disabled = false; await loadPipeline(); }
+}
+
+function closeDraftModal() {
+  elements.draftModal.classList.add('hidden');
 }
 
 async function markPipelineReply(leadId) {
