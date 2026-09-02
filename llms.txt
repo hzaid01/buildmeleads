@@ -1,0 +1,21 @@
+# BuildMeLeads
+
+> BuildMeLeads is an open-source, self-hostable B2B lead generation and cold outreach platform built with Node.js, Python FastAPI, SQLite, and Groq LLMs.
+
+## Core Capabilities
+- Google Maps Lead Scraping: Native integration with containerized gosom scraper.
+- Google Business Profile (GBP) Audit: Automated detection of weak profiles (missing websites, unverified listings, low reviews, poor ratings).
+- Contact Enrichment: Fast HTTP and Playwright scraping for business emails, phone numbers (E.164), and social links.
+- AI Outreach Personalization: Groq LLM-driven generation of high-converting, 1-to-1 cold emails referencing specific business gaps.
+- Safe Sending Engine: Recipient local timezone restriction (M-F 9am-5pm), randomized jitter (15-45m), automatic bounce circuit breakers, and suppression handling.
+- Multi-Provider Dispatch: Gmail OAuth 2.0 (encrypted tokens) and SendGrid API.
+
+## Architecture
+- Dashboard: Node.js / Express (Port 3000)
+- Engine: Python FastAPI (Port 8000)
+- Scraper: Docker gosom / Google Maps (Port 8080)
+- Storage: SQLite multi-tenant with Argon2id authentication
+
+## Links & Reference
+- Repository: https://github.com/hzaid01/buildmeleads
+- License: MIT License
